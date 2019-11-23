@@ -9,6 +9,10 @@
 
 char START_MOVIE;
 char END_MOVIE;
+char PAUSE_MOVIE;
+
+const char* PAUSE_EVENT = "user pause";
+const char* UNPAUSE_EVENT = "user unpause";
 
 char* tgets(char* buffer, int len) {
    fgets(buffer,len,stdin);
@@ -84,6 +88,22 @@ int write_key_event(FILE* fp, key_event* kev, int time_stamp) {
    return fprintf(fp, "%s,%d\n", kev->event, time_stamp);
 }
 
+int handle_event(int cury, time_t start_timer, key_event* kev, FILE* fp, int maxy) {
+      cury++;	
+      if (cury == maxy) {
+         move(0,0);
+         deleteln();
+         cury--;
+         move(cury,0);
+      }
+
+      int time_stamp = time(0) - start_timer;
+      mvprintw(cury, 0, "%s - %d", kev->event, time_stamp);
+      write_key_event(fp, kev, time_stamp);
+
+      return cury;
+}
+
 int main(int argc, char** argv) {
 
    char inp;
@@ -108,6 +128,8 @@ int main(int argc, char** argv) {
    START_MOVIE = *tgets(buffer, 127);
    printf("End Movie Key: " );
    END_MOVIE = *tgets(buffer, 127);
+   printf("Pause Movie Key: ");
+   PAUSE_MOVIE = *tgets(buffer, 127);
 
    printf("Waiting to start movie: ");
 
@@ -130,30 +152,43 @@ int main(int argc, char** argv) {
 
    int cury = 0;
 
+   int pause_start = 0;
+   int pause_time = 0;
+   int paused = FALSE;
+
+   key_event* pause_key_event = create_key_event(PAUSE_MOVIE, PAUSE_EVENT);
+   key_event* unpause_key_event = create_key_event(PAUSE_MOVIE, UNPAUSE_EVENT);
+
    time_t start_timer = time(0);
 
    noecho();
 
    while((inp = getch()) != END_MOVIE) {
+
+      if (inp == PAUSE_MOVIE && !paused) {
+         paused = TRUE;
+         pause_start = time(0);
+
+         cury = handle_event(cury, start_timer + pause_time, pause_key_event, fp, y);
+      } else if (paused) {
+         paused = FALSE;
+         pause_time += time(0) - pause_start;
+
+         cury = handle_event(cury, start_timer + pause_time, unpause_key_event, fp, y);
+      }
+
       key_event* kev = get_key_event(ev, inp);
       if (!kev) {
          continue;
       }
 
-      cury++;	
-      if (cury == y) {
-         move(0,0);
-         deleteln();
-         cury--;
-         move(cury,0);
-      }
-
-      int time_stamp = time(0) - start_timer;
-      mvprintw(cury, 0, "%s - %d", kev->event, time_stamp);
-      write_key_event(fp, kev, time_stamp);
+      cury = handle_event(cury, start_timer + pause_time, kev, fp, y);
    }
 
    fclose(fp);
+
+   destroy_key_event(pause_key_event);
+   destroy_key_event(unpause_key_event);
 
    destroy_event_list(ev);
 
