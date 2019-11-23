@@ -1,0 +1,29 @@
+hotkey,event
+m,monster on screen
+M,gang encounters monster
+v,villan on screen
+V,gang encounters villan
+i,intro start
+o,intro end
+h,chase start
+g,chase end
+s,scooby snack offer
+a,scooby snack eat
+d,vanishing daphne
+l,"""We've lost"""
+0,another mystery
+p,plan
+t,trap
+;,split up
+c,clue
+q,explanation start
+w,explanation end
+u,unmask
+r,carry
+n,nice of
+b,lost glasses
+k,meddling kids
+:,meet up again
+1,zoinks
+2,jeepers
+3,jinkees
