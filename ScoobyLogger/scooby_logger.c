@@ -149,19 +149,65 @@ WINDOW* draw_event_list(WINDOW* win, event_list* ev) {
    return win;
 }
 
+WINDOW* draw_log_window(WINDOW* win) {
+
+   int y, x;
+   getmaxyx(stdscr, y, x);
+
+   int nlines = y * (EVENT_LIST_WINDOW_PERCENT - 1) / EVENT_LIST_WINDOW_PERCENT;
+   int ncols = x;
+
+   int ystart = y / EVENT_LIST_WINDOW_PERCENT;
+
+   if (!win) {
+      win = newwin(nlines, ncols, ystart, 0);
+   } else {
+      win->_begy = ystart;
+      wresize(win, nlines, ncols);
+   }
+
+   return win;
+   
+}
+
 int main() {
    event_list* ev = read_events_from_file("scooby-keys-config.csv", TRUE);
 
    initscr();
+   noecho();
 
    int y, x;
    getmaxyx(stdscr, y, x);
    
-   WINDOW* win = NULL;
+   WINDOW* win = draw_event_list(NULL, ev);
+   
+   WINDOW* bot = draw_log_window(NULL);
 
-   do {
-      win = draw_event_list(win, ev);
-   } while(wgetch(win) != 'q');
+   wrefresh(win);
+   wrefresh(bot);
+
+   int inp;
+   int cury = 0;
+
+   while((inp = wgetch(bot)) != 'q') {
+      if (inp == KEY_RESIZE) {
+         win = draw_event_list(win, ev);
+         bot = draw_log_window(bot);
+         wrefresh(win);
+         wrefresh(bot);
+      } else {
+         int maxy = getmaxy(bot);
+         cury++;	
+         if (cury >= maxy) {
+            wmove(bot, 0,0);
+            wdeleteln(bot);
+            cury = maxy - 1;
+            wmove(bot, cury,0);
+         }
+         wprintw(bot, "Bot\n");
+         wrefresh(bot);
+      }
+   }
 
    endwin();
 
