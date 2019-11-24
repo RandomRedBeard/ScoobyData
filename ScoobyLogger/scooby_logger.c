@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+#define NCURSES_OPAQUE 0
+
 #include <curses.h>
 #include <time.h>
 #include <math.h>
