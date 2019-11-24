@@ -4,8 +4,11 @@
 #include <unistd.h>
 #include <curses.h>
 #include <time.h>
+#include <math.h>
 
 #include "event_list.h"
+
+#define EVENT_LIST_WINDOW_PERCENT 4
 
 char START_MOVIE;
 char END_MOVIE;
@@ -88,23 +91,84 @@ int write_key_event(FILE* fp, key_event* kev, int time_stamp) {
    return fprintf(fp, "%s,%d\n", kev->event, time_stamp);
 }
 
-int handle_event(int cury, time_t start_timer, key_event* kev, FILE* fp, int maxy) {
+int handle_event(WINDOW* win, int cury, time_t start_timer, key_event* kev, FILE* fp, int maxy) {
       cury++;	
       if (cury == maxy) {
-         move(0,0);
-         deleteln();
+         wmove(win, 0,0);
+         wdeleteln(win);
          cury--;
-         move(cury,0);
+         wmove(win, cury,0);
       }
 
       int time_stamp = time(0) - start_timer;
-      mvprintw(cury, 0, "%s - %d", kev->event, time_stamp);
+      mvwprintw(win, cury, 0, "%s - %d", kev->event, time_stamp);
       write_key_event(fp, kev, time_stamp);
 
       return cury;
 }
 
-int main(int argc, char** argv) {
+WINDOW* draw_event_list(WINDOW* win, event_list* ev) {
+
+   int y, x;
+   getmaxyx(stdscr, y, x);
+
+   if (!win) {
+      win = newwin(y / EVENT_LIST_WINDOW_PERCENT, x, 0, 0);
+   } else {
+      wclear(win);
+      wrefresh(win);
+      wresize(win, y / EVENT_LIST_WINDOW_PERCENT, x);
+   }
+
+   int win_height = getmaxy(win);
+   int win_width = getmaxx(win);
+
+   int count = (int)(ev->size / win_height);
+   //Temp soln to prevent over stepping window height
+   count++;
+
+   int width = win_width / count;
+
+   key_event* iter = ev->head;
+
+   int column = 0;
+   int row = 0;
+
+   while(iter) {
+      mvwprintw(win, row, column * width, "%c - %s", iter->key, iter->event);
+
+      column++;
+
+      if (column == count) {
+         column = 0;
+         row++;
+      }
+
+      iter = iter->next;
+   }
+   return win;
+}
+
+int main() {
+   event_list* ev = read_events_from_file("scooby-keys-config.csv", TRUE);
+
+   initscr();
+
+   int y, x;
+   getmaxyx(stdscr, y, x);
+   
+   WINDOW* win = NULL;
+
+   do {
+      win = draw_event_list(win, ev);
+   } while(wgetch(win) != 'q');
+
+   endwin();
+
+   return 0;
+}
+
+int mainx(int argc, char** argv) {
 
    char inp;
 
@@ -144,11 +208,13 @@ int main(int argc, char** argv) {
 
    initscr();
 
+   WINDOW* win = stdscr;
+
    // Get window height
    int y;
-   y = getmaxy(stdscr);
+   y = getmaxy(win);
 
-   printw("Starting movie\n");
+   wprintw(win, "Starting movie\n");
 
    int cury = 0;
 
@@ -163,18 +229,18 @@ int main(int argc, char** argv) {
 
    noecho();
 
-   while((inp = getch()) != END_MOVIE) {
+   while((inp = wgetch(win)) != END_MOVIE) {
 
       if (inp == PAUSE_MOVIE && !paused) {
          paused = TRUE;
          pause_start = time(0);
 
-         cury = handle_event(cury, start_timer + pause_time, pause_key_event, fp, y);
+         cury = handle_event(win, cury, start_timer + pause_time, pause_key_event, fp, y);
       } else if (paused) {
          paused = FALSE;
          pause_time += time(0) - pause_start;
 
-         cury = handle_event(cury, start_timer + pause_time, unpause_key_event, fp, y);
+         cury = handle_event(win, cury, start_timer + pause_time, unpause_key_event, fp, y);
       }
 
       key_event* kev = get_key_event(ev, inp);
@@ -182,7 +248,7 @@ int main(int argc, char** argv) {
          continue;
       }
 
-      cury = handle_event(cury, start_timer + pause_time, kev, fp, y);
+      cury = handle_event(win, cury, start_timer + pause_time, kev, fp, y);
    }
 
    fclose(fp);

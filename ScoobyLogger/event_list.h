@@ -77,6 +77,7 @@ int destroy_event_list(event_list* ev) {
 }
 
 void print_event_list(event_list* ev) {
+   printf("Size %d\n", ev->size);
    key_event* iter = ev->head;
    while(iter) {
       printf("%c - %s\n", iter->key, iter->event);
