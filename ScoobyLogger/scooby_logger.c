@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 
+// NCURSES Mac hack around for accessing _win_st attrs
 #define NCURSES_OPAQUE 0
 
 #include <curses.h>
@@ -94,23 +95,29 @@ int write_key_event(FILE* fp, key_event* kev, int time_stamp) {
    return fprintf(fp, "%s,%d\n", kev->event, time_stamp);
 }
 
-int handle_event(WINDOW* win, int cury, time_t start_timer, key_event* kev, FILE* fp, int maxy) {
-      cury++;	
-      if (cury == maxy) {
-         wmove(win, 0,0);
-         wdeleteln(win);
-         cury--;
-         wmove(win, cury,0);
-      }
+int handle_event(WINDOW* win, int cury, time_t start_timer, key_event* kev, FILE* fp) {
+   // Get max y for accuracy
+   int maxy = getmaxy(win);
 
-      int time_stamp = time(0) - start_timer;
-      mvwprintw(win, cury, 0, "%s - %d", kev->event, time_stamp);
-      write_key_event(fp, kev, time_stamp);
+   cury++;	
+   if (cury >= maxy) {
+      wmove(win, 0,0);
+      wdeleteln(win);
+      
+      // In the case of a resize
+      // cury may be beyond window
+      cury = maxy - 1;
+      wmove(win, cury,0);
+   }
 
-      return cury;
+   int time_stamp = time(0) - start_timer;
+   mvwprintw(win, cury, 0, "%s - %d", kev->event, time_stamp);
+   write_key_event(fp, kev, time_stamp);
+
+   return cury;
 }
 
-WINDOW* draw_event_list(WINDOW* win, event_list* ev) {
+WINDOW* draw_event_win(WINDOW* win, event_list* ev) {
 
    int y, x;
    getmaxyx(stdscr, y, x);
@@ -152,7 +159,7 @@ WINDOW* draw_event_list(WINDOW* win, event_list* ev) {
    return win;
 }
 
-WINDOW* draw_log_window(struct _win_st* win) {
+WINDOW* draw_main_win(WINDOW* win) {
 
    int y, x;
    getmaxyx(stdscr, y, x);
@@ -165,6 +172,7 @@ WINDOW* draw_log_window(struct _win_st* win) {
    if (!win) {
       win = newwin(nlines, ncols, ystart, 0);
    } else {
+      // Change upper limit on resize
       win->_begy = ystart;
       wresize(win, nlines, ncols);
    }
@@ -173,53 +181,9 @@ WINDOW* draw_log_window(struct _win_st* win) {
    
 }
 
-int main() {
-   event_list* ev = read_events_from_file("scooby-keys-config.csv", TRUE);
-
-   initscr();
-   noecho();
-
-   int y, x;
-   getmaxyx(stdscr, y, x);
-   
-   WINDOW* win = draw_event_list(NULL, ev);
-   
-   WINDOW* bot = draw_log_window(NULL);
-
-   wrefresh(win);
-   wrefresh(bot);
+int main(int argc, char** argv) {
 
    int inp;
-   int cury = 0;
-
-   while((inp = wgetch(bot)) != 'q') {
-      if (inp == KEY_RESIZE) {
-         win = draw_event_list(win, ev);
-         bot = draw_log_window(bot);
-         wrefresh(win);
-         wrefresh(bot);
-      } else {
-         int maxy = getmaxy(bot);
-         cury++;	
-         if (cury >= maxy) {
-            wmove(bot, 0,0);
-            wdeleteln(bot);
-            cury = maxy - 1;
-            wmove(bot, cury,0);
-         }
-         wprintw(bot, "Bot\n");
-         wrefresh(bot);
-      }
-   }
-
-   endwin();
-
-   return 0;
-}
-
-int mainx(int argc, char** argv) {
-
-   char inp;
 
    event_list* ev = read_events_from_file("scooby-keys-config.csv", TRUE);
 
@@ -256,14 +220,17 @@ int mainx(int argc, char** argv) {
    FILE* fp = fopen(movie,"w");
 
    initscr();
+   noecho();
 
-   WINDOW* win = stdscr;
+   // Draw both windows on terminal
+   WINDOW* event_win = draw_event_win(NULL, ev);
+   WINDOW* main_win = draw_main_win(NULL);
 
-   // Get window height
-   int y;
-   y = getmaxy(win);
+   // curses display for windows
+   wrefresh(event_win);
+   wrefresh(main_win);
 
-   wprintw(win, "Starting movie\n");
+   wprintw(main_win, "Starting movie\n");
 
    int cury = 0;
 
@@ -276,20 +243,27 @@ int mainx(int argc, char** argv) {
 
    time_t start_timer = time(0);
 
-   noecho();
+   while((inp = wgetch(main_win)) != END_MOVIE) {
 
-   while((inp = wgetch(win)) != END_MOVIE) {
+      if (inp == KEY_RESIZE) {
+         event_win = draw_event_win(event_win, ev);
+         main_win = draw_main_win(main_win);
+         wrefresh(event_win);
+         wrefresh(main_win);
+
+         continue;
+      }
 
       if (inp == PAUSE_MOVIE && !paused) {
          paused = TRUE;
          pause_start = time(0);
 
-         cury = handle_event(win, cury, start_timer + pause_time, pause_key_event, fp, y);
+         cury = handle_event(main_win, cury, start_timer + pause_time, pause_key_event, fp);
       } else if (paused) {
          paused = FALSE;
          pause_time += time(0) - pause_start;
 
-         cury = handle_event(win, cury, start_timer + pause_time, unpause_key_event, fp, y);
+         cury = handle_event(main_win, cury, start_timer + pause_time, unpause_key_event, fp);
       }
 
       key_event* kev = get_key_event(ev, inp);
@@ -297,7 +271,7 @@ int mainx(int argc, char** argv) {
          continue;
       }
 
-      cury = handle_event(win, cury, start_timer + pause_time, kev, fp, y);
+      cury = handle_event(main_win, cury, start_timer + pause_time, kev, fp);
    }
 
    fclose(fp);
