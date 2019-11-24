@@ -149,7 +149,7 @@ WINDOW* draw_event_list(WINDOW* win, event_list* ev) {
    return win;
 }
 
-WINDOW* draw_log_window(WINDOW* win) {
+WINDOW* draw_log_window(struct _win_st* win) {
 
    int y, x;
    getmaxyx(stdscr, y, x);
